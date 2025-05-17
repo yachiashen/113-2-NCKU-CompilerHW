@@ -1,3 +1,5 @@
 myscanner
 lex.* 
 test.rs
+
+.DS_Store
