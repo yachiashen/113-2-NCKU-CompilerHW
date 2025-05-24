@@ -188,6 +188,7 @@ Statement
     | Block
     | IF Expression Block                       { /*printf("IF\n");*/ }
     | IF Expression Block ELSE Block            { /*printf("IF-ELSE\n");*/ }
+    | WHILE Expression Block            { /*printf("WHILE\n");*/ }
     | PRINTLN '(' '"' STRING_LIT '"' ')' ';'    { printf("STRING_LIT \"%s\"\n", $4); printf("PRINTLN str\n"); free($4); }
     | PRINTLN '(' Expression ')' ';'            { printf("PRINTLN %s\n", lookup_type($3)); }
     | PRINT '(' Expression ')' ';'              { printf("PRINT %s\n", current_type); }
@@ -195,7 +196,9 @@ Statement
 
 LetDeclStmt
     : LET MutOpt ID ':' Type AssignOpt ';' { insert_symbol($3, $5, "-", $2); free($3); }
-    ; //IDENT (name=x, address=0)
+    | LET MutOpt ID AssignOpt ';' { insert_symbol($3, current_type, "-", $2); free($3); }
+    | LET MutOpt ID ':' Type '=' '[' ExpressionList ']' ';' { insert_symbol($3, $5, "-", $2); free($3); }
+    ;
 
 MutOpt
     : MUT               { $$ = 1; }
@@ -220,10 +223,16 @@ Type
     | BOOL  { strcpy(current_type, "bool"); $$ = current_type; }
     | STR   { strcpy(current_type, "str"); $$ = current_type; }
     | '&' STR   { strcpy(current_type, "str"); $$ = current_type; }
+    | '[' Type ';' INT_LIT ']'      { printf("INT_LIT %d\n", $4); strcpy(current_type, "array"); $$ = "array"; }
     ;
 
 ExprStmt
-    : Expression ';'
+    : Expression ';'            { HAS_ERROR = false; }
+    ;
+
+ExpressionList
+    : Expression
+    | ExpressionList ',' Expression
     ;
 
 /*-------------------- Expressions ---------------------------*/
@@ -233,7 +242,23 @@ Expression
     | Expression '*' Expression     { /*flush_id_buffer();*/ printf("MUL\n"); }
     | Expression '/' Expression     { /*flush_id_buffer();*/ printf("DIV\n"); }
     | Expression '%' Expression     { /*flush_id_buffer();*/ printf("REM\n"); }
-    | ID '=' Expression     { printf("ASSIGN\n"); /*printf("IDENT (name=%s, address=%d)\n", $1, lookup_symbol($1));*/ }
+    | ID '=' Expression { 
+        if(lookup_symbol($1)==-1 && !HAS_ERROR){
+            printf("error:%d: undefined: %s\n", yylineno+1, $1);
+            HAS_ERROR = true;
+        }
+        else{
+            Symbol *sym = &symbol_table[scope_level][lookup_symbol($1)];
+            if(sym->mut==0 && !HAS_ERROR){
+                printf("ASSIGN\n");
+                printf("error:%d: cannot borrow immutable borrowed content `%s` as mutable\n", yylineno+1, $1);
+                HAS_ERROR = true;
+            }
+            else{
+                printf("ASSIGN\n");
+            }
+        }
+    }
     | ID '=' '"' STRING_LIT '"'     { printf("STRING_LIT \"%s\"\n", $4); printf("ASSIGN\n"); /*printf("IDENT (name=%s, address=%d)\n", $1, lookup_symbol($1));*/ }
     | ID ADD_ASSIGN Expression      { printf("ADD_ASSIGN\n"); /*printf("IDENT (name=%s, address=%d)\n", $1, lookup_symbol($1));*/ }
     | ID SUB_ASSIGN Expression      { printf("SUB_ASSIGN\n"); /*printf("IDENT (name=%s, address=%d)\n", $1, lookup_symbol($1));*/ }
@@ -270,9 +295,27 @@ Expression
         }
         // else printf("-- error: %s, %s --\n", $1, $3);
     }
-    | Expression LSHIFT Expression          { printf("LSHIFT\n"); }
+    | Expression LSHIFT Expression          {
+        if(strcmp(lookup_type($1), lookup_type($3))!=0 && !HAS_ERROR){
+            printf("error:%d: invalid operation: LSHIFT (mismatched types %s and %s)\n", yylineno+1, lookup_type($1), lookup_type($3));
+            printf("LSHIFT\n");
+            HAS_ERROR = true;
+        }
+        else{
+            printf("LSHIFT\n");
+        }
+    }
     | Expression RSHIFT Expression          { printf("RSHIFT\n"); }
-    | Expression '>' Expression             { printf("GTR\n"); }
+    | Expression '>' Expression             {
+        if(HAS_ERROR){
+            printf("error:%d: invalid operation: GTR (mismatched types undefined and %s)\n", yylineno+1, current_type);
+            printf("GTR\n");
+            HAS_ERROR = true;
+        }
+        else{
+            printf("GTR\n");
+        }
+    }
     | Expression '<' Expression             { printf("LSS\n"); }
     | Expression GEQ Expression             { printf("GEQ\n"); }
     | Expression LEQ Expression             { printf("LEQ\n"); }
@@ -285,10 +328,22 @@ Expression
     | '~' Expression                        { $$ = $2; }
     | '(' Expression ')'                    { $$ = $2; }
     | ID {
-        char buffer[64];
-        snprintf(buffer, sizeof(buffer), "IDENT (name=%s, address=%d)", $1, lookup_symbol($1));
-        add_id_to_buffer(buffer);
+        if (lookup_symbol($1) == -1) {
+            printf("error:%d: undefined: %s\n", yylineno+1, $1);
+            HAS_ERROR = true;
+        } else {
+            char buffer[64];
+            snprintf(buffer, sizeof(buffer), "IDENT (name=%s, address=%d)", $1, lookup_symbol($1));
+            add_id_to_buffer(buffer);
+            printf("IDENT (name=%s, address=%d)\n", $1, lookup_symbol($1));
+            strcpy(current_type, lookup_type($1));
+        }
+    }
+    | ID '[' INT_LIT ']' {
         printf("IDENT (name=%s, address=%d)\n", $1, lookup_symbol($1));
+        printf("INT_LIT %d\n", $3);
+        strcpy(current_type, "array");
+        $$ = "array";
     }
     | INT_LIT       { printf("INT_LIT %d\n", $1); add_type_to_buffer("i32"); strcpy(current_type, "i32"); $$ = "i32"; }
     | FLOAT_LIT     { printf("FLOAT_LIT %f\n", $1); add_type_to_buffer("f32"); strcpy(current_type, "f32"); $$ = "f32"; }
