@@ -16,10 +16,6 @@
         printf("error:%d: %s\n", yylineno, s);
     }
 
-    extern int yylineno;
-    extern int yylex();
-    extern FILE *yyin;
-
     /* Symbol table function - you can add new functions if needed. */
     /* parameters and return type can be changed */
     #define MAX_BUFFER_SIZE 1024
@@ -35,19 +31,19 @@
         char func_sig[32];
     } Symbol;
 
-    static char type_buffer[MAX_BUFFER_SIZE][128];
-    static char id_buffer[MAX_BUFFER_SIZE][128];
-    static char operation_buffer[MAX_BUFFER_SIZE][64];
-    static int type_buffer_index = 0;
-    static int id_buffer_index = 0;
-    static int operation_buffer_index = 0;
+    // static char type_buffer[MAX_BUFFER_SIZE][128];
+    // static char id_buffer[MAX_BUFFER_SIZE][128];
+    // static char operation_buffer[MAX_BUFFER_SIZE][64];
+    // static int type_buffer_index = 0;
+    // static int id_buffer_index = 0;
+    // static int operation_buffer_index = 0;
 
-    static void add_type_to_buffer(const char *type);
-    static void add_id_to_buffer(const char *id);
-    static void add_operation_to_buffer(const char *operation);
-    static void flush_type_buffer();
-    static void flush_id_buffer();
-    static void flush_operation_buffer();
+    // static void add_type_to_buffer(const char *type);
+    // static void add_id_to_buffer(const char *id);
+    // static void add_operation_to_buffer(const char *operation);
+    // static void flush_type_buffer();
+    // static void flush_id_buffer();
+    // static void flush_operation_buffer();
 
     static Symbol symbol_table[MAX_SCOPE][MAX_SYMBOLS];
     static int symbol_count[MAX_SCOPE] = {0};
@@ -112,7 +108,6 @@
 %right UMINUS
 %right '!' '~'
 %right AS
-%nonassoc IFX
 
 /* Nonterminal with return, which need to sepcify type */
 %type <s_val> Type
@@ -141,7 +136,7 @@ GlobalStatement
 ;
 
 FunctionDeclStmt
-    : FUNC ID { printf("func: %s\n", $2); insert_symbol($2, "func", "(V)V", -1); free($2);} '(' FunctionParamListOpt ')' ReturnTypeOpt Block
+    : FUNC ID { printf("func: %s\n", $2); insert_symbol($2, "func", "(V)V", -1); free($2); } '(' FunctionParamListOpt ')' ReturnTypeOpt Block
     ;
 
 FunctionParamListOpt
@@ -183,21 +178,21 @@ StatementList
 Statement
     : LetDeclStmt
     | ExprStmt
-    | RETURN Expression ';'
-    | BREAK ';'
     | Block
     | IF Expression Block                       { /*printf("IF\n");*/ }
     | IF Expression Block ELSE Block            { /*printf("IF-ELSE\n");*/ }
-    | WHILE Expression Block            { /*printf("WHILE\n");*/ }
-    | PRINTLN '(' '"' STRING_LIT '"' ')' ';'    { printf("STRING_LIT \"%s\"\n", $4); printf("PRINTLN str\n"); free($4); }
+    | WHILE Expression Block                    { /*printf("WHILE\n");*/ }
+    | PRINTLN '(' '"' STRING_LIT '"' ')' ';'    { printf("STRING_LIT \"%s\"\n", $4); printf("PRINTLN str\n"); }
     | PRINTLN '(' Expression ')' ';'            { printf("PRINTLN %s\n", lookup_type($3)); }
-    | PRINT '(' Expression ')' ';'              { printf("PRINT %s\n", current_type); }
+    | PRINT '(' Expression ')' ';'              { printf("PRINT %s\n", lookup_type($3)); }
+    | BREAK ';'
+    | RETURN Expression ';'
     ;
 
 LetDeclStmt
-    : LET MutOpt ID ':' Type AssignOpt ';' { insert_symbol($3, $5, "-", $2); free($3); }
-    | LET MutOpt ID AssignOpt ';' { insert_symbol($3, current_type, "-", $2); free($3); }
-    | LET MutOpt ID ':' Type '=' '[' ExpressionList ']' ';' { insert_symbol($3, $5, "-", $2); free($3); }
+    : LET MutOpt ID ':' Type AssignOpt ';' { insert_symbol($3, $5, "-", $2); }
+    | LET MutOpt ID AssignOpt ';' { insert_symbol($3, lookup_type($3), "-", $2); }
+    | LET MutOpt ID ':' Type '=' '[' ExpressionList ']' ';' { insert_symbol($3, $5, "-", $2); }
     ;
 
 MutOpt
@@ -213,21 +208,21 @@ MutOpt
 AssignOpt
     : '=' Expression
     | '=' '"' STRING_LIT '"'        { printf("STRING_LIT \"%s\"\n", $3); }
-    | '=' '"' '"'        { printf("STRING_LIT \"\"\n"); }
+    | '=' '"' '"'                   { printf("STRING_LIT \"\"\n"); }
     | /* empty */
     ;
 
 Type
-    : INT   { strcpy(current_type, "i32"); $$ = "i32"; }
-    | FLOAT { strcpy(current_type, "f32"); $$ = "f32"; }
-    | BOOL  { strcpy(current_type, "bool"); $$ = current_type; }
-    | STR   { strcpy(current_type, "str"); $$ = current_type; }
-    | '&' STR   { strcpy(current_type, "str"); $$ = current_type; }
+    : INT                           { strcpy(current_type, "i32");  $$ = "i32"; }
+    | FLOAT                         { strcpy(current_type, "f32");  $$ = "f32"; }
+    | BOOL                          { strcpy(current_type, "bool"); $$ = "bool"; }
+    | STR                           { strcpy(current_type, "str");  $$ = "str"; }
+    | '&' STR                       { strcpy(current_type, "str");  $$ = "str"; }
     | '[' Type ';' INT_LIT ']'      { printf("INT_LIT %d\n", $4); strcpy(current_type, "array"); $$ = "array"; }
     ;
 
 ExprStmt
-    : Expression ';'            { HAS_ERROR = false; }
+    : Expression ';'        { HAS_ERROR = false; }
     ;
 
 ExpressionList
@@ -243,13 +238,13 @@ Expression
     | Expression '/' Expression     { /*flush_id_buffer();*/ printf("DIV\n"); }
     | Expression '%' Expression     { /*flush_id_buffer();*/ printf("REM\n"); }
     | ID '=' Expression { 
-        if(lookup_symbol($1)==-1 && !HAS_ERROR){
+        if(lookup_symbol($1) == -1){
             printf("error:%d: undefined: %s\n", yylineno+1, $1);
             HAS_ERROR = true;
         }
         else{
             Symbol *sym = &symbol_table[scope_level][lookup_symbol($1)];
-            if(sym->mut==0 && !HAS_ERROR){
+            if(sym->mut == 0){
                 printf("ASSIGN\n");
                 printf("error:%d: cannot borrow immutable borrowed content `%s` as mutable\n", yylineno+1, $1);
                 HAS_ERROR = true;
@@ -276,7 +271,7 @@ Expression
         else printf("-- error: %s, %s --\n", $1, $3);
     }
     | INT_LIT AS Type {
-        printf("INT_LIT %d\n", $1); add_type_to_buffer("i32"); strcpy(current_type, "i32");
+        printf("INT_LIT %d\n", $1); /*add_type_to_buffer("i32")*/; strcpy(current_type, "i32");
         if(strcmp($3,"i32")==0){
             printf("f2i\n");
         }
@@ -286,7 +281,7 @@ Expression
         // else printf("-- error: %s, %s --\n", $1, $3);
     }
     | FLOAT_LIT AS Type {
-        printf("FLOAT_LIT %f\n", $1); add_type_to_buffer("f32"); strcpy(current_type, "f32");
+        printf("FLOAT_LIT %f\n", $1); /*add_type_to_buffer("f32")*/; strcpy(current_type, "f32");
         if(strcmp($3,"i32")==0){
             printf("f2i\n");
         }
@@ -295,8 +290,8 @@ Expression
         }
         // else printf("-- error: %s, %s --\n", $1, $3);
     }
-    | Expression LSHIFT Expression          {
-        if(strcmp(lookup_type($1), lookup_type($3))!=0 && !HAS_ERROR){
+    | Expression LSHIFT Expression {
+        if(strcmp(lookup_type($1), lookup_type($3)) != 0){
             printf("error:%d: invalid operation: LSHIFT (mismatched types %s and %s)\n", yylineno+1, lookup_type($1), lookup_type($3));
             printf("LSHIFT\n");
             HAS_ERROR = true;
@@ -305,8 +300,8 @@ Expression
             printf("LSHIFT\n");
         }
     }
-    | Expression RSHIFT Expression          { printf("RSHIFT\n"); }
-    | Expression '>' Expression             {
+    | Expression RSHIFT Expression { printf("RSHIFT\n"); }
+    | Expression '>' Expression    {
         if(HAS_ERROR){
             printf("error:%d: invalid operation: GTR (mismatched types undefined and %s)\n", yylineno+1, current_type);
             printf("GTR\n");
@@ -316,7 +311,16 @@ Expression
             printf("GTR\n");
         }
     }
-    | Expression '<' Expression             { printf("LSS\n"); }
+    | Expression '<' Expression {
+        if(HAS_ERROR){
+            printf("error:%d: invalid operation: LSS (mismatched types undefined and %s)\n", yylineno+1, current_type);
+            printf("LSS\n");
+            HAS_ERROR = true;
+        }
+        else{
+            printf("LSS\n");
+        } 
+    }
     | Expression GEQ Expression             { printf("GEQ\n"); }
     | Expression LEQ Expression             { printf("LEQ\n"); }
     | Expression EQL Expression             { printf("EQL\n"); }
@@ -334,7 +338,7 @@ Expression
         } else {
             char buffer[64];
             snprintf(buffer, sizeof(buffer), "IDENT (name=%s, address=%d)", $1, lookup_symbol($1));
-            add_id_to_buffer(buffer);
+            // add_id_to_buffer(buffer);
             printf("IDENT (name=%s, address=%d)\n", $1, lookup_symbol($1));
             strcpy(current_type, lookup_type($1));
         }
@@ -345,10 +349,10 @@ Expression
         strcpy(current_type, "array");
         $$ = "array";
     }
-    | INT_LIT       { printf("INT_LIT %d\n", $1); add_type_to_buffer("i32"); strcpy(current_type, "i32"); $$ = "i32"; }
-    | FLOAT_LIT     { printf("FLOAT_LIT %f\n", $1); add_type_to_buffer("f32"); strcpy(current_type, "f32"); $$ = "f32"; }
-    | TRUE          { printf("bool TRUE\n"); add_type_to_buffer("bool"); strcpy(current_type, "bool"); }
-    | FALSE         { printf("bool FALSE\n"); add_type_to_buffer("bool"); strcpy(current_type, "bool"); }
+    | INT_LIT       { printf("INT_LIT %d\n", $1); /*add_type_to_buffer("i32")*/; strcpy(current_type, "i32"); $$ = "i32"; }
+    | FLOAT_LIT     { printf("FLOAT_LIT %f\n", $1); /*add_type_to_buffer("f32")*/; strcpy(current_type, "f32"); $$ = "f32"; }
+    | TRUE          { printf("bool TRUE\n"); /*add_type_to_buffer("bool")*/; strcpy(current_type, "bool"); }
+    | FALSE         { printf("bool FALSE\n"); /*add_type_to_buffer("bool")*/; strcpy(current_type, "bool"); }
     ;
 
 %%
@@ -435,7 +439,7 @@ static void dump_symbol() {
     --scope_level;
 }
 
-static void add_type_to_buffer(const char *type){
+/* static void add_type_to_buffer(const char *type){
     strncpy(type_buffer[type_buffer_index], type, sizeof(type_buffer[type_buffer_index]));
     type_buffer_index++;
 }
@@ -464,4 +468,4 @@ static void flush_operation_buffer(){
         printf("%s\n", operation_buffer[i]);
     }
     operation_buffer_index = 0;
-}
+} */
