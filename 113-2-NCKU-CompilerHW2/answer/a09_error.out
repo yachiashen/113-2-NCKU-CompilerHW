@@ -16,6 +16,7 @@ IDENT (name=z, address=1)
 error:7: invalid operation: LSHIFT (mismatched types i32 and f32)
 LSHIFT
 ASSIGN
+error:7: cannot borrow immutable borrowed content `x` as mutable
 error:9: undefined: gg
 INT_LIT 0
 error:9: invalid operation: GTR (mismatched types undefined and i32)
